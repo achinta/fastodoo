@@ -1,10 +1,11 @@
 from . import crud, models, schemas
 from .database import SessionLocal, engine, get_db
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date
 from .database import Base
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi import Depends
+from datetime import datetime, date
 import pydantic
 
 def get_fast_model_name(aims_model_name):
@@ -80,34 +81,47 @@ def create_fast_models(odoo_model_name, abstract=False):
             readonly_fields.append(model_field.name)
 
         # TODO check if we can use same for text and char
-        # if model_field.ttype in ['char', 'text']:
-        #     db_fields[model_field.name] = Column(String, nullable=(not model_field.required))
-        #     pydantic_fields[model_field.name] = (str, '')
+        if model_field.ttype in ['char', 'text']:
+            db_fields[model_field.name] = Column(String, nullable=(not model_field.required))
+            if model_field.required:
+                pydantic_fields[model_field.name] = str
+            else:
+                pydantic_fields[model_field.name] = (Optional[str], None)
+
 
         if model_field.ttype == 'integer':
             if model_field.name == 'id':
                 db_fields[model_field.name] = Column(Integer, primary_key=True)
-                pydantic_fields[model_field.name] = (int, 0)
-            # else:
-            #     db_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
+            else:
+                db_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
+            pydantic_fields[model_field.name] = (int, 0)
 
 
-        # if model_field.ttype == 'boolean':
-        #     fields[model_field.name] = models.BooleanField(null=(not model_field.required),
-        #                                                    help_text=model_field.field_description)
+        if model_field.ttype == 'boolean':
+            db_fields[model_field.name] = Column(Boolean, nullable=(not model_field.required))
+            if model_field.required:
+                pydantic_fields[model_field.name] = bool
+            else:
+                pydantic_fields[model_field.name] = (Optional[bool], None)
 
-        # if model_field.ttype == 'datetime':
-        #     fields[model_field.name] = models.DateTimeField(null=(not model_field.required),
-        #                                                     help_text=model_field.field_description)
+        if model_field.ttype == 'datetime':
+            db_fields[model_field.name] = Column(DateTime, nullable=(not model_field.required))
+            if model_field.required:
+                pydantic_fields[model_field.name] = datetime
+            else:
+                pydantic_fields[model_field.name] = (Optional[datetime], None)
 
-        # if model_field.ttype == 'date':
-        #     fields[model_field.name] = models.DateField(null=(not model_field.required),
-        #                                                 help_text=model_field.field_description)
+        if model_field.ttype == 'date':
+            db_fields[model_field.name] = Column(Date, nullable=(not model_field.required))
+            if model_field.required:
+                pydantic_fields[model_field.name] = date
+            else:
+                pydantic_fields[model_field.name] = (Optional[date], None)
 
         # if model_field.ttype == 'many2one':
         #     if model_field.name in ['create_uid', 'write_uid']:
         #         continue
-        #     fields[model_field.name] = create_many2one_dynamic_field(model_field)
+
 
         # if model_field.ttype == 'many2many':
         #     to_model = get_django_model_name(model_field.relation)
