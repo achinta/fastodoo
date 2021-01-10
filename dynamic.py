@@ -53,7 +53,7 @@ def create_model(name, fields=None, bases=(), app_label='', module='', options=N
 
 def create_fast_models(odoo_model_name, abstract=False):
     '''
-    Creates a NonPersistantAimsModel model dynamically by reading field details from odoo table ir_model_fields
+    Creates a database model and pydantic model dynamically by reading field details from odoo table ir_model_fields
     :param abstract:
     :param aims_model_name: aims model name like 'srcm.abhyasi'
     :return: dynamially created model
@@ -80,17 +80,17 @@ def create_fast_models(odoo_model_name, abstract=False):
             readonly_fields.append(model_field.name)
 
         # TODO check if we can use same for text and char
-        if model_field.ttype in ['char', 'text']:
-            db_fields[model_field.name] = Column(String, nullable=(not model_field.required))
-            pydantic_fields[model_field.name] = (str, '')
+        # if model_field.ttype in ['char', 'text']:
+        #     db_fields[model_field.name] = Column(String, nullable=(not model_field.required))
+        #     pydantic_fields[model_field.name] = (str, '')
 
         if model_field.ttype == 'integer':
             if model_field.name == 'id':
                 db_fields[model_field.name] = Column(Integer, primary_key=True)
-            else:
-                db_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
-            pydantic_fields[model_field.name] = (int, None)
-                                                    
+                pydantic_fields[model_field.name] = (int, 0)
+            # else:
+            #     db_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
+
 
         # if model_field.ttype == 'boolean':
         #     fields[model_field.name] = models.BooleanField(null=(not model_field.required),
@@ -125,21 +125,10 @@ def create_fast_models(odoo_model_name, abstract=False):
 
     # fields['readonly_fields'] = readonly_fields
 
-    # options = {
-    #     'ordering': ('id',),
-    #     'managed': False,
-    #     'db_table': aims_table_name
-    # }
-    # if abstract:
-    #     options['abstract'] = True
+    db_model = type(fast_model_name + 'Db', (Base,), db_fields)
 
-    db_model = create_model(
-        fast_model_name + 'Db',
-        bases=(Base,),
-        fields=db_fields,
-        # options=options,
-        # app_label='api'
-    )
 
     pydantic_model = pydantic.create_model(fast_model_name + 'Api', **pydantic_fields)
+    pydantic_model.Config.orm_mode = True
+
     return db_model, pydantic_model
