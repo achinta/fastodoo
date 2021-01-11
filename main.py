@@ -31,17 +31,30 @@ def read_aims_model_fields(model_name: str, skip: int = 0, limit: int = 100, db:
 odoo_models = ['srcm.group','res.country']
 
 
+def read_objects(db_model, skip: int = 0, limit: int = 10):
+    db = next(get_db())
+    objs = db.query(db_model).offset(skip).limit(limit).all()
+    return objs
+
+def read_object(db_model, object_id):
+    db = next(get_db())
+    obj = db.query(db_model).filter(db_model.id == object_id).first()
+    return obj
+
 for odoo_model in odoo_models:
+
     db_model, api_model = create_fast_models(odoo_model)
-
-    def read_objects():
-        db = next(get_db())
-        objs = db.query(db_model).all()[0:10]
-        return objs
-
     route_name = odoo_model.replace('.','_')
-    app.router.add_api_route(f'/odoo/{route_name}', read_objects, methods=['get'],
+
+    # return object list
+    read_objects_for_model = partial(read_objects, db_model)
+    app.router.add_api_route(f'/odoo/{route_name}', read_objects_for_model, methods=['get'],
                          response_model=List[api_model])
+
+    # return object
+    read_object_for_model = partial(read_object, db_model)
+    app.add_api_route("/odoo/{0}/".format(route_name) + '{object_id}', read_object_for_model, methods=['get'],
+                             response_model=api_model)
 
 # country_db, country_pyd = create_fast_models('res.country')
 # @app.get('/countries', response_model=List[country_pyd])
