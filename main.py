@@ -1,23 +1,43 @@
 from typing import List, Optional
-from fastapi import Depends, FastAPI, HTTPException, APIRouter
-from fastapi.responses import PlainTextResponse
+from fastapi import Depends, FastAPI, HTTPException, APIRouter, Security, Request, status
+from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from starlette.middleware.authentication import AuthenticationMiddleware
 
 from pydantic import BaseModel, Field
 
 from . import crud, models, schemas
 from .database import engine, get_db
 from .dynamic import create_fast_models
+from .middleware import JWTAuthBackend
 from sqlalchemy.orm import Session
 from functools import partial
 import uvicorn
+
 import logging
-
-app = FastAPI()
-
 from loguru import logger
 logging.basicConfig(level=logging.INFO)
+
+# config
+ODOO_MODELS = {
+    'srcm.group': {
+        'route': 'groups',
+        'auth_needed': True
+    },
+    'meditation.center':{
+        'auth_needed': True,
+        'scope': 'meditationcenters'
+    },
+    'res.country':{
+        'route': 'countries',
+        'auth_needed': False
+    }
+}
+
+# create the fastapi app
+app = FastAPI()
+app.add_middleware(AuthenticationMiddleware, backend=JWTAuthBackend())
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
@@ -28,10 +48,36 @@ def read_aims_model_fields(model_name: str, skip: int = 0, limit: int = 100, db:
     result = crud.read_aims_model_fields(model_name)
     return result
 
-odoo_models = ['srcm.group','res.country']
+def read_objects(db_model, auth_needed: bool, scope: str, request: Request, skip: int = 0, limit: int = 10, ):
+    """
+    Common method to read list of odoo objects
+    Args:
+        db_model ([type]): SQL Alchemy model
+        request (Request): [description]
+        skip (int, optional):  
+        limit (int, optional): 
+
+    Returns:
+        [type]: Odoo objects
+    """    
+    # check for authentication
+    if auth_needed:
+        if request.user.is_authenticated != True:
+            msg = 'User is not authenticated'
+            logger.info(msg)
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=msg)
+
+        # check for authoriations using scopes
+        scope = '' if scope is None else scope
+        read_scope = f'{scope}:read'
+        if scope and read_scope not in request.user.scopes:
+            msg = 'User does not have permissions'
+            logger.info('user does not have permissions')
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=msg)
+    else:
+        logger.info(f'Auth not needed')
 
 
-def read_objects(db_model, skip: int = 0, limit: int = 10):
     db = next(get_db())
     objs = db.query(db_model).offset(skip).limit(limit).all()
     return objs
@@ -41,13 +87,16 @@ def read_object(db_model, object_id):
     obj = db.query(db_model).filter(db_model.id == object_id).first()
     return obj
 
-for odoo_model in odoo_models:
-
+for odoo_model, model_conf in ODOO_MODELS.items():
     db_model, api_model = create_fast_models(odoo_model)
-    route_name = odoo_model.replace('.','_')
+    # replace if we want to different route for an odoo model
+    route_name = model_conf['route'] if model_conf.get('route') else odoo_model.replace('.','-') + 's'
+    auth_needed = model_conf.get('auth_needed')
+    scope = model_conf.get('scope', odoo_model.replace(',',''))
 
     # return object list
-    read_objects_for_model = partial(read_objects, db_model)
+    # we use partial to pass the db_model as a paramter to read_objects
+    read_objects_for_model = partial(read_objects, db_model, auth_needed, scope)
     app.router.add_api_route(f'/odoo/{route_name}', read_objects_for_model, methods=['get'],
                          response_model=List[api_model])
 
