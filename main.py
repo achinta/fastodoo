@@ -21,18 +21,26 @@ logging.basicConfig(level=logging.INFO)
 
 # config
 ODOO_MODELS = {
-    'srcm.group': {
-        'route': 'groups',
-        'auth_needed': True
-    },
-    'meditation.center':{
-        'auth_needed': True,
-        'scope': 'meditationcenters'
+    'res.currency':{
+        'route': 'currencies',
+        'auth_needed': False
     },
     'res.country':{
         'route': 'countries',
         'auth_needed': False
-    }
+    },
+    # 'res.city':{
+    #     'route': 'cities',
+    #     'auth_needed': False
+    # },
+    # 'srcm.group': {
+    #     'route': 'groups',
+    #     'auth_needed': True
+    # },
+    # 'meditation.center':{
+    #     'auth_needed': True,
+    #     'scope': 'meditationcenters'
+    # },
 }
 
 # create the fastapi app

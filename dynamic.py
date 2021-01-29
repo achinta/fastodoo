@@ -1,6 +1,7 @@
 from . import crud, models, schemas
 from .database import SessionLocal, engine, get_db
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date
+from sqlalchemy.orm import relationship
 from .database import Base
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -8,9 +9,12 @@ from fastapi import Depends
 from datetime import datetime, date
 import pydantic
 
+db_models = {}
+pydantic_models = {}
+
 def get_fast_model_name(aims_model_name):
     '''
-    For many2one and many2many aims fields, get the related Django model name
+    For many2one and many2many odoo fields, get dynamic model name
     :param model_field:
     :return:
     '''
@@ -21,6 +25,9 @@ def get_fast_model_name(aims_model_name):
     # replace with the alias if present
     # django_model_name = AIMS_MODEL_ALIAS.get(django_model_name, django_model_name)
     return fast_model_name 
+
+def get_odoo_table_name(odoo_model_name):
+    return odoo_model_name.replace('.', '_')
 
 def create_model(name, fields=None, bases=(), app_label='', module='', options=None, admin_opts=None):
     """
@@ -63,12 +70,11 @@ def create_fast_models(odoo_model_name, abstract=False):
     # read the model fields from odoo fields metadata
     model_fields = crud.read_aims_model_fields(odoo_model_name)
 
-    odoo_table_name = odoo_model_name.replace('.', '_')
     mail_message_fields_to_ignore = ['message_follower_ids', 'message_ids', 'message_main_attachment_id',
                                      'website_message_ids']
 
     # initialize fastapi model fields
-    db_fields = {'__tablename__': odoo_table_name}
+    db_fields = {'__tablename__': get_odoo_table_name(odoo_model_name)}
     pydantic_fields = {}
     readonly_fields = []
 
@@ -118,10 +124,30 @@ def create_fast_models(odoo_model_name, abstract=False):
             else:
                 pydantic_fields[model_field.name] = (Optional[date], None)
 
-        # if model_field.ttype == 'many2one':
-        #     if model_field.name in ['create_uid', 'write_uid']:
-        #         continue
+        if model_field.ttype == 'many2one':
+            if model_field.name in ['create_uid', 'write_uid', 'address_view_id']:
+                continue
 
+            rel_model_name = get_fast_model_name(model_field.relation)
+            rel_table_name = get_odoo_table_name(model_field.relation)
+            rel_table_col_name = f'{rel_table_name}.id'
+
+            if model_field.name.endswith('_id'):
+                id_field_name = model_field.name
+                obj_field_name = model_field.name.replace('_id', '')
+            else:
+                id_field_name = model_field.name + '_id' 
+                obj_field_name = model_field.name
+
+            db_fields[id_field_name] = Column(Integer, ForeignKey(rel_table_col_name), nullable=(not model_field.required))
+            db_fields[obj_field_name] = relationship(rel_model_name + 'Db')
+
+            if model_field.required:
+                pydantic_fields[id_field_name] = (int, 0)
+                pydantic_fields[obj_field_name] = db_models[rel_model_name] 
+            else:
+                pydantic_fields[id_field_name] = (Optional[int], 0)
+                pydantic_fields[obj_field_name] = db_models[rel_model_name] 
 
         # if model_field.ttype == 'many2many':
         #     to_model = get_django_model_name(model_field.relation)
@@ -145,4 +171,6 @@ def create_fast_models(odoo_model_name, abstract=False):
     pydantic_model = pydantic.create_model(fast_model_name + 'Api', **pydantic_fields)
     pydantic_model.Config.orm_mode = True
 
+    # add to cache
+    db_models[fast_model_name] = db_model
     return db_model, pydantic_model
