@@ -9,6 +9,10 @@ from fastapi import Depends
 from datetime import datetime, date
 import pydantic
 
+import logging
+from loguru import logger
+logging.basicConfig(level=logging.INFO)
+
 db_models = {}
 pydantic_models = {}
 
@@ -144,10 +148,10 @@ def create_fast_models(odoo_model_name, abstract=False):
 
             if model_field.required:
                 pydantic_fields[id_field_name] = (int, 0)
-                pydantic_fields[obj_field_name] = db_models[rel_model_name] 
+                pydantic_fields[obj_field_name] = (pydantic_models[rel_model_name], None)
             else:
                 pydantic_fields[id_field_name] = (Optional[int], 0)
-                pydantic_fields[obj_field_name] = db_models[rel_model_name] 
+                pydantic_fields[obj_field_name] = (Optional[pydantic_models[rel_model_name]], None)
 
         # if model_field.ttype == 'many2many':
         #     to_model = get_django_model_name(model_field.relation)
@@ -167,10 +171,10 @@ def create_fast_models(odoo_model_name, abstract=False):
 
     db_model = type(fast_model_name + 'Db', (Base,), db_fields)
 
-
-    pydantic_model = pydantic.create_model(fast_model_name + 'Api', **pydantic_fields)
+    pydantic_model = pydantic.create_model(fast_model_name + 'Pyd', **pydantic_fields)
     pydantic_model.Config.orm_mode = True
 
     # add to cache
     db_models[fast_model_name] = db_model
+    pydantic_models[fast_model_name] = pydantic_model
     return db_model, pydantic_model
