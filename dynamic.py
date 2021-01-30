@@ -133,6 +133,10 @@ def create_fast_models(odoo_model_name, abstract=False):
                 continue
 
             rel_model_name = get_fast_model_name(model_field.relation)
+            if rel_model_name not in pydantic_models.keys():
+                logger.warning(f'skipping {odoo_model_name}.{model_field.name} as {rel_model_name} is not configured')
+                continue
+
             rel_table_name = get_odoo_table_name(model_field.relation)
             rel_table_col_name = f'{rel_table_name}.id'
 
@@ -144,7 +148,7 @@ def create_fast_models(odoo_model_name, abstract=False):
                 obj_field_name = model_field.name
 
             db_fields[id_field_name] = Column(Integer, ForeignKey(rel_table_col_name), nullable=(not model_field.required))
-            db_fields[obj_field_name] = relationship(rel_model_name + 'Db')
+            db_fields[obj_field_name] = relationship(rel_model_name + 'Db', foreign_keys=[db_fields[id_field_name]])
 
             if model_field.required:
                 pydantic_fields[id_field_name] = (int, 0)
