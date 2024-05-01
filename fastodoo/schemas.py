@@ -1,3 +1,4 @@
+'''pydantic models for FastAPI'''
 from typing import List, Optional
 from pydantic import BaseModel
 

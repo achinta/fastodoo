@@ -7,9 +7,9 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 
 from pydantic import BaseModel, Field
 
-from fastodoo import crud, models, schemas
+from fastodoo import crud, models_old, schemas
 from fastodoo.database import engine, get_db
-from fastodoo.dynamic import create_fast_models
+from fastodoo.models import create_fast_models
 from fastodoo.middleware import JWTAuthBackend
 from sqlalchemy.orm import Session
 from functools import partial
@@ -90,12 +90,13 @@ def read_objects(db_model, auth_needed: bool, scope: str, request: Request, skip
     return objs
 
 def read_object(db_model, object_id):
+    ''''''
     db = next(get_db())
     obj = db.query(db_model).filter(db_model.id == object_id).first()
     return obj
 
 for odoo_model, model_conf in ODOO_MODELS.items():
-    db_model, api_model = create_fast_models(odoo_model)
+    sqlalchemy_model, api_model = create_fast_models(odoo_model)
     # replace if we want to different route for an odoo model
     route_name = model_conf['route'] if model_conf.get('route') else odoo_model.replace('.','-') + 's'
     auth_needed = model_conf.get('auth_needed')
@@ -103,14 +104,14 @@ for odoo_model, model_conf in ODOO_MODELS.items():
 
     # return object list
     # we use partial to pass the db_model as a paramter to read_objects
-    read_objects_for_model = partial(read_objects, db_model, auth_needed, scope)
-    app.router.add_api_route(f'/odoo/{route_name}', read_objects_for_model, methods=['get'],
-                         response_model=List[api_model])
+    read_objects_for_model = partial(read_objects, sqlalchemy_model, auth_needed, scope)
+    app.router.add_api_route(f'/models/{route_name}', read_objects_for_model, methods=['get'],
+                         response_model=List[api_model], name=odoo_model)
 
-    # return object
-    read_object_for_model = partial(read_object, db_model)
-    app.add_api_route("/odoo/{0}/".format(route_name) + '{object_id}', read_object_for_model, methods=['get'],
-                             response_model=api_model)
+    # return object detail
+    read_object_for_model = partial(read_object, sqlalchemy_model)
+    app.add_api_route(path="/models/{0}/".format(route_name) + '{object_id}', endpoint=read_object_for_model, methods=['get'],
+                             response_model=api_model, name=odoo_model)
 
 # country_db, country_pyd = create_fast_models('res.country')
 # @app.get('/countries', response_model=List[country_pyd])
