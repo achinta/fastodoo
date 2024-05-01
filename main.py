@@ -7,9 +7,9 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 
 from pydantic import BaseModel, Field
 
-from fastodoo import crud, models_old, schemas
+from fastodoo.crud import read_objects, read_object
 from fastodoo.database import engine, get_db
-from fastodoo.models import create_fast_models
+from fastodoo.models import create_fast_models, OdooIRModel
 from fastodoo.middleware import JWTAuthBackend
 from sqlalchemy.orm import Session
 from functools import partial
@@ -18,100 +18,47 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# config
-ODOO_MODELS = {
-    'res.currency':{
-        'route': 'currencies',
-        'auth_needed': False
-    },
-    'res.country':{
-        'route': 'countries',
-        'auth_needed': False
-    },
-    # 'res.city':{
-    #     'route': 'cities',
-    #     'auth_needed': False
-    # },
-    # 'srcm.group': {
-    #     'route': 'groups',
-    #     'auth_needed': True
-    # },
-    # 'meditation.center':{
-    #     'auth_needed': True,
-    #     'scope': 'meditationcenters'
-    # },
-}
-
 # create the fastapi app
 app = FastAPI()
 # app.add_middleware(AuthenticationMiddleware, backend=JWTAuthBackend())
+
+odoo_models = read_objects(OdooIRModel, limit=-1)
+
+
+for odoo_model in odoo_models:
+    sqlalchemy_model, api_model = create_fast_models(odoo_model.model)
+    if not sqlalchemy_model:
+        continue
+    # replace if we want to different route for an odoo model
+    # route_name = model_conf['route'] if model_conf.get('route') else odoo_model.replace('.','-') + 's'
+    route_name = odoo_model.model.replace('.','-') + 's'
+    # auth_needed = model_conf.get('auth_needed')
+    # scope = model_conf.get('scope', odoo_model.replace(',',''))
+
+    # return object list
+    # we use partial to pass the db_model as a paramter to read_objects
+    read_objects_for_model = partial(read_objects, sqlalchemy_model)
+    # we use partial to pass the sqlalchemy_model as a paramter endpoint (which is a callable)
+    app.router.add_api_route(f'/models/{route_name}', read_objects_for_model, methods=['get'],
+                         response_model=List[api_model], name=odoo_model.name)
+
+    # return object detail
+    read_object_for_model = partial(read_object, sqlalchemy_model)
+    # we use partial to pass the sqlalchemy_model as a paramter endpoint (which is a callable)
+    app.add_api_route(path="/models/{0}/".format(route_name) + '{object_id}', endpoint=read_object_for_model, methods=['get'],
+                             response_model=api_model, name=odoo_model.name)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     return PlainTextResponse(str(exc), status_code=400)
 
-@app.get('/aims-model-fields/{model_name}', response_model=List[schemas.OdooModelField])
-def read_aims_model_fields(model_name: str, skip: int = 0, limit: int = 100, db: Session=Depends(get_db)):
-    result = crud.read_aims_model_fields(model_name)
-    return result
-
-def read_objects(db_model, auth_needed: bool, scope: str, request: Request, skip: int = 0, limit: int = 10, ):
-    """
-    Common method to read list of odoo objects
-    Args:
-        db_model ([type]): SQL Alchemy model
-        request (Request): [description]
-        skip (int, optional):  
-        limit (int, optional): 
-
-    Returns:
-        [type]: Odoo objects
-    """    
-    # check for authentication
-    if auth_needed:
-        if request.user.is_authenticated != True:
-            msg = 'User is not authenticated'
-            logger.info(msg)
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=msg)
-
-        # check for authoriations using scopes
-        scope = '' if scope is None else scope
-        read_scope = f'{scope}:read'
-        if scope and read_scope not in request.user.scopes:
-            msg = 'User does not have permissions'
-            logger.info('user does not have permissions')
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=msg)
-    else:
-        logger.info(f'Auth not needed')
+# @app.get('/aims-model-fields/{model_name}', response_model=List[schemas.OdooModelField])
+# def read_aims_model_fields(model_name: str, skip: int = 0, limit: int = 100, db: Session=Depends(get_db)):
+#     result = crud.read_aims_model_fields(model_name)
+#     return result
 
 
-    db = next(get_db())
-    objs = db.query(db_model).offset(skip).limit(limit).all()
-    return objs
 
-def read_object(db_model, object_id):
-    ''''''
-    db = next(get_db())
-    obj = db.query(db_model).filter(db_model.id == object_id).first()
-    return obj
-
-for odoo_model, model_conf in ODOO_MODELS.items():
-    sqlalchemy_model, api_model = create_fast_models(odoo_model)
-    # replace if we want to different route for an odoo model
-    route_name = model_conf['route'] if model_conf.get('route') else odoo_model.replace('.','-') + 's'
-    auth_needed = model_conf.get('auth_needed')
-    scope = model_conf.get('scope', odoo_model.replace(',',''))
-
-    # return object list
-    # we use partial to pass the db_model as a paramter to read_objects
-    read_objects_for_model = partial(read_objects, sqlalchemy_model, auth_needed, scope)
-    app.router.add_api_route(f'/models/{route_name}', read_objects_for_model, methods=['get'],
-                         response_model=List[api_model], name=odoo_model)
-
-    # return object detail
-    read_object_for_model = partial(read_object, sqlalchemy_model)
-    app.add_api_route(path="/models/{0}/".format(route_name) + '{object_id}', endpoint=read_object_for_model, methods=['get'],
-                             response_model=api_model, name=odoo_model)
 
 # country_db, country_pyd = create_fast_models('res.country')
 # @app.get('/countries', response_model=List[country_pyd])

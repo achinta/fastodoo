@@ -1,4 +1,3 @@
-from . import crud, models_old, schemas
 from fastodoo.database import SessionLocal, engine, get_db, Base
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date
 from sqlalchemy.orm import relationship
@@ -14,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
+
 from fastodoo.database import Base
 
 class OdooModelField(Base):
@@ -33,6 +33,19 @@ class OdooModelField(Base):
     relation_table = Column(String)
     column1 = Column(String)
     column2 = Column(String)
+
+class OdooIRModel(Base):
+    __tablename__ = "ir_model"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    model = Column(String)
+    info = Column(String)
+    state = Column(String)
+    create_date = Column(DateTime)
+    write_date = Column(DateTime)
+    transient = Column(Boolean)
+    is_mail_thread = Column(Boolean)
 
 sqlalchemy_models = {}
 pydantic_models = {}
@@ -93,15 +106,21 @@ def create_fast_models(odoo_model_name, abstract=False):
     '''
     fast_model_name = get_fast_model_name(odoo_model_name) + ('Abstract' if abstract else '')
     # read the model fields from odoo fields metadata
+    from fastodoo import crud
     model_fields = crud.read_aims_model_fields(odoo_model_name)
 
     mail_message_fields_to_ignore = ['message_follower_ids', 'message_ids', 'message_main_attachment_id',
                                      'website_message_ids']
 
     # initialize fastapi model fields
-    sqlalchemy_fields = {'__tablename__': get_odoo_table_name(odoo_model_name)}
+    sqlalchemy_fields = {'__tablename__': get_odoo_table_name(odoo_model_name), 
+                         '__table_args__': {'extend_existing': True}}
     pydantic_fields = {}
     readonly_fields = []
+
+    # ignore models without fields
+    if not model_fields:
+        return None, None
 
     for model_field in model_fields:
         # ignore odoo computed fields and mail_message fields
@@ -130,23 +149,23 @@ def create_fast_models(odoo_model_name, abstract=False):
         if model_field.ttype == 'boolean':
             sqlalchemy_fields[model_field.name] = Column(Boolean, nullable=(not model_field.required))
             if model_field.required:
-                pydantic_fields[model_field.name] = bool
+                pydantic_fields[model_field.name] = (bool, Field(default=None))
             else:
-                pydantic_fields[model_field.name] = (Optional[bool], None)
+                pydantic_fields[model_field.name] = (Optional[bool], Field(default=None))
 
         if model_field.ttype == 'datetime':
             sqlalchemy_fields[model_field.name] = Column(DateTime, nullable=(not model_field.required))
             if model_field.required:
-                pydantic_fields[model_field.name] = datetime
+                pydantic_fields[model_field.name] = (datetime, Field(default=None))
             else:
-                pydantic_fields[model_field.name] = (Optional[datetime], None)
+                pydantic_fields[model_field.name] = (Optional[datetime], Field(default=None))
 
         if model_field.ttype == 'date':
             sqlalchemy_fields[model_field.name] = Column(Date, nullable=(not model_field.required))
             if model_field.required:
-                pydantic_fields[model_field.name] = date
+                pydantic_fields[model_field.name] = (date, Field(default=None))
             else:
-                pydantic_fields[model_field.name] = (Optional[date], None)
+                pydantic_fields[model_field.name] = (Optional[date], Field(default=None))
 
         if model_field.ttype == 'many2one':
             if model_field.name in ['create_uid', 'write_uid', 'address_view_id']:
