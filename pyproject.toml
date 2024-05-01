@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "fastodoo"
+version = "0.1.0"
+description = "Dyanamic REST api for odoo using FastAPI"
+authors = ["Ajay Chinta <chinta512@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.110.3"
+sqlalchemy = "^2.0.29"
+pydantic = "^2.7.1"
+uvicorn = "^0.29.0"
+jwt = "^1.3.1"
+psycopg2-binary = "^2.9.9"
+cryptography = "^42.0.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

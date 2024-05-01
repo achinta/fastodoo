@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
-from .database import Base
+from fastodoo.database import Base
 
 class OdooModelField(Base):
     __tablename__ = "ir_model_fields"

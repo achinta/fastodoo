@@ -1,9 +1,7 @@
 from sqlalchemy.orm import Session
 from fastapi import Depends
-from .database import get_db 
-
-from . import models, schemas
-from loguru import logger
+from fastodoo.database import get_db
+from fastodoo import models, schemas
 import logging
 logging.basicConfig(level=logging.INFO)
 

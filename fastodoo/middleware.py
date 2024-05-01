@@ -8,11 +8,15 @@ import typing
 from typing import List
 import jwt
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 import os
 
 # simpler logging
 import logging
-from loguru import logger
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 class FastOdooUser(SimpleUser):
@@ -22,13 +26,50 @@ class FastOdooUser(SimpleUser):
         self.partner_id = partner_id
         self.scopes = scopes
 
+def create_keys():
+    '''generate private and public keys'''
+    # Generate private key
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+
+    # Get the public key
+    public_key = private_key.public_key()
+
+    # Serialize the private key to PEM format
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+
+    # Serialize the public key to PEM format
+    public_key_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+    # Write the keys to files
+    with open("private_key.pem", "wb") as private_key_file:
+        private_key_file.write(private_key_pem)
+
+    with open("public_key.pem", "wb") as public_key_file:
+        public_key_file.write(public_key_pem)
+
 class JWTAuthBackend(AuthenticationBackend):
     '''
     Authenticate with JWT using the public key configured
     '''
     def __init__(self) -> None:
         super().__init__()
-        self.jwt_pub_path = os.environ.get('JWT_PUB_PATH')
+        self.jwt_pub_path = os.environ.get('JWT_PUB_PATH', os.getcwd() + '/jwt.pub')
+        # raise error if JWT_PUB_PATH is not found
+        if not self.jwt_pub_path:
+            raise AuthenticationError('JWT Public key path not configured')
+        if not os.path.exists(self.jwt_pub_path):
+            raise AuthenticationError(f'JWT Public key not found in path {self.jwt_pub_path}')
         self.jwt_pub_key = open(self.jwt_pub_path).read()
 
     async def authenticate(self, conn: HTTPConnection) -> typing.Optional[typing.Tuple["AuthCredentials", "BaseUser"]]:

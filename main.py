@@ -7,17 +7,16 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 
 from pydantic import BaseModel, Field
 
-from . import crud, models, schemas
-from .database import engine, get_db
-from .dynamic import create_fast_models
-from .middleware import JWTAuthBackend
+from fastodoo import crud, models, schemas
+from fastodoo.database import engine, get_db
+from fastodoo.dynamic import create_fast_models
+from fastodoo.middleware import JWTAuthBackend
 from sqlalchemy.orm import Session
 from functools import partial
-import uvicorn
 
 import logging
-from loguru import logger
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # config
 ODOO_MODELS = {
@@ -45,7 +44,7 @@ ODOO_MODELS = {
 
 # create the fastapi app
 app = FastAPI()
-app.add_middleware(AuthenticationMiddleware, backend=JWTAuthBackend())
+# app.add_middleware(AuthenticationMiddleware, backend=JWTAuthBackend())
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):

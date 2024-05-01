@@ -1,8 +1,7 @@
 from . import crud, models, schemas
-from .database import SessionLocal, engine, get_db
+from fastodoo.database import SessionLocal, engine, get_db, Base
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Date
 from sqlalchemy.orm import relationship
-from .database import Base
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi import Depends
@@ -10,10 +9,10 @@ from datetime import datetime, date
 import pydantic
 
 import logging
-from loguru import logger
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-db_models = {}
+sqlalchemy_models = {}
 pydantic_models = {}
 
 def get_fast_model_name(aims_model_name):
@@ -78,7 +77,7 @@ def create_fast_models(odoo_model_name, abstract=False):
                                      'website_message_ids']
 
     # initialize fastapi model fields
-    db_fields = {'__tablename__': get_odoo_table_name(odoo_model_name)}
+    sqlalchemy_fields = {'__tablename__': get_odoo_table_name(odoo_model_name)}
     pydantic_fields = {}
     readonly_fields = []
 
@@ -92,37 +91,36 @@ def create_fast_models(odoo_model_name, abstract=False):
 
         # TODO check if we can use same for text and char
         if model_field.ttype in ['char', 'text']:
-            db_fields[model_field.name] = Column(String, nullable=(not model_field.required))
+            sqlalchemy_fields[model_field.name] = Column(String, nullable=(not model_field.required))
             if model_field.required:
-                pydantic_fields[model_field.name] = str
+                pydantic_fields[model_field.name] = (str, Field(default=None))
             else:
-                pydantic_fields[model_field.name] = (Optional[str], None)
-
+                pydantic_fields[model_field.name] = (Optional[str], Field(default=None))
 
         if model_field.ttype == 'integer':
             if model_field.name == 'id':
-                db_fields[model_field.name] = Column(Integer, primary_key=True)
+                sqlalchemy_fields[model_field.name] = Column(Integer, primary_key=True)
             else:
-                db_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
-            pydantic_fields[model_field.name] = (int, 0)
+                sqlalchemy_fields[model_field.name] = Column(Integer, nullable=(not model_field.required))
+            pydantic_fields[model_field.name] = (int, Field(default=0))
 
 
         if model_field.ttype == 'boolean':
-            db_fields[model_field.name] = Column(Boolean, nullable=(not model_field.required))
+            sqlalchemy_fields[model_field.name] = Column(Boolean, nullable=(not model_field.required))
             if model_field.required:
                 pydantic_fields[model_field.name] = bool
             else:
                 pydantic_fields[model_field.name] = (Optional[bool], None)
 
         if model_field.ttype == 'datetime':
-            db_fields[model_field.name] = Column(DateTime, nullable=(not model_field.required))
+            sqlalchemy_fields[model_field.name] = Column(DateTime, nullable=(not model_field.required))
             if model_field.required:
                 pydantic_fields[model_field.name] = datetime
             else:
                 pydantic_fields[model_field.name] = (Optional[datetime], None)
 
         if model_field.ttype == 'date':
-            db_fields[model_field.name] = Column(Date, nullable=(not model_field.required))
+            sqlalchemy_fields[model_field.name] = Column(Date, nullable=(not model_field.required))
             if model_field.required:
                 pydantic_fields[model_field.name] = date
             else:
@@ -147,8 +145,8 @@ def create_fast_models(odoo_model_name, abstract=False):
                 id_field_name = model_field.name + '_id' 
                 obj_field_name = model_field.name
 
-            db_fields[id_field_name] = Column(Integer, ForeignKey(rel_table_col_name), nullable=(not model_field.required))
-            db_fields[obj_field_name] = relationship(rel_model_name + 'Db', foreign_keys=[db_fields[id_field_name]])
+            sqlalchemy_fields[id_field_name] = Column(Integer, ForeignKey(rel_table_col_name), nullable=(not model_field.required))
+            sqlalchemy_fields[obj_field_name] = relationship(rel_model_name + 'Db', foreign_keys=[sqlalchemy_fields[id_field_name]])
 
             if model_field.required:
                 pydantic_fields[id_field_name] = (int, 0)
@@ -157,28 +155,28 @@ def create_fast_models(odoo_model_name, abstract=False):
                 pydantic_fields[id_field_name] = (Optional[int], 0)
                 pydantic_fields[obj_field_name] = (Optional[pydantic_models[rel_model_name]], None)
 
-        # if model_field.ttype == 'many2many':
-        #     to_model = get_django_model_name(model_field.relation)
+    #     if model_field.ttype == 'many2many':
+    #         to_model = get_django_model_name(model_field.relation)
 
-        #     # Create a through model which contains the mapping
-        #     rel_model = create_aims_manytomany_rel_model(model_field)
+    #         # Create a through model which contains the mapping
+    #         rel_model = create_aims_manytomany_rel_model(model_field)
 
-        #     # related name for reverse relationships. Needed if the models have more than one relation
-        #     related_name = AIMS_RELATED_NAMES.get((model_field.model, model_field.name))
+    #         # related name for reverse relationships. Needed if the models have more than one relation
+    #         related_name = AIMS_RELATED_NAMES.get((model_field.model, model_field.name))
 
-        #     # add the field
-        #     fields[model_field.name] = models.ManyToManyField(to=to_model, through=rel_model, related_name=related_name,
-        #                                                       null=(not model_field.required),
-        #                                                       through_fields=(model_field.column1, model_field.column2))
+    #         # add the field
+    #         fields[model_field.name] = models.ManyToManyField(to=to_model, through=rel_model, related_name=related_name,
+    #                                                           null=(not model_field.required),
+    #                                                           through_fields=(model_field.column1, model_field.column2))
 
-    # fields['readonly_fields'] = readonly_fields
+    # # fields['readonly_fields'] = readonly_fields
 
-    db_model = type(fast_model_name + 'Db', (Base,), db_fields)
+    sqlalchemy_model = type(fast_model_name + 'Db', (Base,), sqlalchemy_fields)
 
     pydantic_model = pydantic.create_model(fast_model_name + 'Pyd', **pydantic_fields)
-    pydantic_model.Config.orm_mode = True
+    # pydantic_model.Config.from_attributes = True
 
     # add to cache
-    db_models[fast_model_name] = db_model
+    sqlalchemy_models[fast_model_name] = sqlalchemy_model
     pydantic_models[fast_model_name] = pydantic_model
-    return db_model, pydantic_model
+    return sqlalchemy_model, pydantic_model
