@@ -173,7 +173,7 @@ def create_fast_models(odoo_model_name, abstract=False):
 
             rel_model_name = get_fast_model_name(model_field.relation)
             if rel_model_name not in pydantic_models.keys():
-                logger.warning(f'skipping {odoo_model_name}.{model_field.name} as {rel_model_name} is not configured')
+                logger.warning(f"skipping many2one field '{odoo_model_name}'.'{model_field.name}' as {rel_model_name} is not configured")
                 continue
 
             rel_table_name = get_odoo_table_name(model_field.relation)
